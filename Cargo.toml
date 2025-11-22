@@ -1,0 +1,9 @@
+[package]
+name = "crystal_painter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+eframe = "0.33"
+egui = "0.33"
+rand = "0.9"
