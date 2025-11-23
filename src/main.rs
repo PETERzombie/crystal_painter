@@ -1,6 +1,6 @@
 mod app;
 
-use app::state::PaintState;
+use app::state::AppState;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions::default();
