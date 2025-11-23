@@ -1,9 +1,9 @@
 use eframe::egui;
-use crate::app::state::AppState;
+use crate::app::state::PaintState;
 use crate::app::ui::{dropdown, color_pickers, swatches, mode_buttons};
 
 /// Render the top toolbar. This is the public entry used by state.rs
-pub fn show(state: &mut AppState, ctx: &egui::Context) {
+pub fn show(state: &mut PaintState, ctx: &egui::Context) {
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         ui.horizontal(|ui| {
             // Mode buttons
@@ -22,7 +22,7 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) {
             ui.separator();
 
             // Pause / Grow / Decay buttons
-            if ui.button(if state.paused { "Resume" } else { "Pause" }).clicked() {
+            if ui.button(if state.paused { "Seed" } else { "Freeze" }).clicked() {
                 state.paused = !state.paused;
             }
             if ui.button("Grow").clicked() {
@@ -43,6 +43,21 @@ pub fn show(state: &mut AppState, ctx: &egui::Context) {
 
             ui.separator();
 
+            // -------------------------------------------------------
+            // 🔥 Add Destroy + Leave buttons here
+            // -------------------------------------------------------
+            if ui.button("Destroy").clicked() {
+                state.should_destroy = true;
+            }
+
+            if ui.button("Leave").clicked() {
+                state.should_exit = true;
+            }
+            ui.separator();
+            ui.label(format!("Blots: {}", self.blots.len()));
+            ui.separator();
+            // -------------------------------------------------------
+            
             // Swatches (right aligned)
             swatches::draw(ui, state);
         });

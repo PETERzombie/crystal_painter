@@ -1,5 +1,5 @@
 use eframe::egui::{self, Color32, Stroke, StrokeKind};
-use crate::app::state::AppState;
+use crate::app::state::PaintState;
 
 const MAX_SWATCHES: usize = 10;
 

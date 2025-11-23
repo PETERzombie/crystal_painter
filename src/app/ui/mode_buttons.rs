@@ -1,6 +1,6 @@
 use eframe::egui::{self, Color32};
 use crate::app::brushes::BrushKind;
-use crate::app::state::AppState;
+use crate::app::state::PaintState;
 
 pub fn draw(ui: &mut egui::Ui, state: &mut AppState) {
     ui.horizontal(|ui| {

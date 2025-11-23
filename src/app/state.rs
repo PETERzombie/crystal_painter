@@ -1,150 +1,122 @@
-//! Central application state for the modular Crystal Painter.
-//! This file is the app root for the `crate::app` module.
+// app/state.rs
 
-use eframe::egui::{self, Color32, Pos2};
-use crate::app::painter::CanvasPainter;
-use crate::app::brushes::{BrushKind, crystal, drip, blotter};
-use crate::app::ui;
+use eframe::egui::{Color32, Pos2};
+use crate::app::brushes::{
+    BrushEngine,
+    blotter::BlotterBrush,
+    blotter::Blot,
+    blotter_props::BlotterProps,
+};
 
-use std::time::Instant;
-
-pub struct AppState {
-    // UI / colors
-    pub current_color: Color32,
-    pub canvas_bg: Color32,
-    pub swatches: Vec<Color32>,
-    pub selected_swatch: Option<usize>,
-
-    // brush selection
-    pub active_brush: BrushKind,
-
-    // brushes (engines + props)
-    pub crystal: crystal::CrystalBrush,
-    pub drip: drip::DripBrush,
-    pub blotter: blotter::BlotterBrush,
-
-    // canvas stored strokes / blots
-    pub strokes: Vec<crystal::StrokeData>,
-    pub blots: Vec<blotter::Blot>,
-
-    // interactive state
-    pub current_points: Vec<Pos2>,
-    pub last_tick: Instant,
-
-    // simulation
-    pub paused: bool,
-    pub contain_growth: bool,
-    pub growth_speed: f32,
-    pub auto_grow: bool,
+#[derive(PartialEq)]
+pub enum ActiveBrush {
+    Blotter,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
+pub struct PaintState {
+    pub active_brush: ActiveBrush,
+
+    pub blotter: BlotterBrush,
+    pub blots: Vec<Blot>,              // ← RESTORED QUEUED BLOTS
+
+    pub color: Color32,
+    pub last_pos: Option<Pos2>,
+    pub is_drawing: bool,
+
+    // Restored flags
+    pub should_destroy: bool,
+    pub should_exit: bool,
+
+    pub last_blot_pos: Option<Pos2>,   // ← spacing via deposit_rate
+}
+
+impl PaintState {
+    pub fn new() -> Self {
         Self {
-            current_color: Color32::from_rgb(200, 230, 255),
-            canvas_bg: Color32::from_rgb(36, 36, 38),
-            swatches: vec![
-                Color32::from_rgb(200, 230, 255),
-                Color32::from_rgb(120, 200, 240),
-                Color32::from_rgb(255, 160, 140),
-            ],
-            selected_swatch: None,
+            active_brush: ActiveBrush::Blotter,
 
-            active_brush: BrushKind::Crystal,
-
-            crystal: crystal::CrystalBrush::new(),
-            drip: drip::DripBrush::new(),
-            blotter: blotter::BlotterBrush::new(),
-
-            strokes: Vec::new(),
+            blotter: BlotterBrush::new(),
             blots: Vec::new(),
 
-            current_points: Vec::new(),
-            last_tick: Instant::now(),
+            color: Color32::from_rgb(200, 200, 255),
 
-            paused: false,
-            contain_growth: false,
-            growth_speed: 0.35,
-            auto_grow: false,
+            last_pos: None,
+            is_drawing: false,
+
+            last_blot_pos: None,
+
+            should_destroy: false,
+            should_exit: false,
         }
     }
-}
 
-impl eframe::App for AppState {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // ---- Top Bar (UI)
-        ui::top_bar::show(self, ctx);
+    // -------------------------------------------------------------------------
+    // Restore queued-blot behavior
+    // -------------------------------------------------------------------------
 
-        // ---- Canvas panel
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(self.canvas_bg))
-            .show(ctx, |ui| {
-                let rect = ui.available_rect_before_wrap();
+    pub fn push_blot(&mut self, pos: Pos2) {
+        let p = &self.blotter.props;
 
-                // Allocate interaction region BEFORE taking painter()
-                let (_, response) =
-                    ui.allocate_exact_size(ui.available_size(), egui::Sense::drag());
+        self.blots.push(Blot {
+            pos,
+            radius: p.radius,
+            softness: p.softness,
+            opacity: p.opacity,
+            color: self.color,
+        });
+    }
 
-                // Pointer events
-                let pointer_pos = response.interact_pointer_pos();
-                let down = response.dragged();        // true only when actively dragging
-                let released = response.drag_stopped(); // proper release detection
+    pub fn try_deposit_blot(&mut self, pos: Pos2) {
+        let rate = self.blotter.props.deposit_rate.max(0.1);
 
-                // ---- Live preview drawing (temporary lines)
-                if down {
-                    if let Some(p) = pointer_pos {
-                        if self.current_points.is_empty() {
-                            self.current_points.push(p);
-                        } else {
-                            let prev = *self.current_points.last().unwrap();
-                            let moved = (p - prev).length();
-
-                            if moved > 1.0 {
-                                self.current_points.push(p);
-                            }
-                        }
-                    }
+        match self.last_blot_pos {
+            None => {
+                self.push_blot(pos);
+                self.last_blot_pos = Some(pos);
+            }
+            Some(prev) => {
+                if prev.distance(pos) >= rate * 8.0 {
+                    self.push_blot(pos);
+                    self.last_blot_pos = Some(pos);
                 }
+            }
+        }
+    }
 
-                // ---- Finalize stroke
-                if released {
-                    if self.current_points.len() >= 2 {
-                        let mut data = crystal::StrokeData::new(self.current_color, self.auto_grow);
+    // -------------------------------------------------------------------------
+    // Called every pointer movement
+    // -------------------------------------------------------------------------
 
-                        for w in self.current_points.windows(2) {
-                            let a = w[0];
-                            let b = w[1];
-                            let dv = b - a;
-                            let dir = if dv.length_sq() > 1e-6 {
-                                dv.normalized()
-                            } else {
-                                egui::Vec2::new(1.0, 0.0)
-                            };
-                            data.add_segment(a, b, dir);
-                        }
+    pub fn paint_stroke(&mut self, pos: Pos2) {
+        if !self.is_drawing {
+            self.last_pos = Some(pos);
+            return;
+        }
 
-                        self.strokes.push(data);
-                    }
-                    self.current_points.clear();
-                }
+        match self.active_brush {
+            ActiveBrush::Blotter => {
+                self.try_deposit_blot(pos);
+            }
+        }
 
-                // ---- Take painter AFTER ui usage ends (fixes borrow error)
-                let painter = ui.painter();
+        self.last_pos = Some(pos);
+    }
 
-                // ---- Painting pipeline
-                CanvasPainter::paint_background(&painter, rect, self.canvas_bg);
-                CanvasPainter::paint_strokes(&painter, &self.strokes, 2.0);
-                CanvasPainter::paint_blots(&painter, &self.blots);
-                CanvasPainter::paint_active_path(&painter, &self.current_points);
-                CanvasPainter::paint_overlay(&painter, rect, &self.strokes, &self.blots);
+    // -------------------------------------------------------------------------
 
-                // ---- Simulation tick (crystal growth)
-                if !self.paused {
-                    self.crystal
-                        .growth_step(&mut self.strokes, self.growth_speed, self.contain_growth);
-                }
-            });
+    pub fn set_color(&mut self, color: Color32) {
+        self.color = color;
+    }
 
-        ctx.request_repaint();
+    pub fn begin_stroke(&mut self, pos: Pos2) {
+        self.is_drawing = true;
+        self.last_pos = Some(pos);
+        self.last_blot_pos = None;  // fresh spacing
+    }
+
+    pub fn end_stroke(&mut self) {
+        self.is_drawing = false;
+        self.last_pos = None;
+        self.last_blot_pos = None;
     }
 }
