@@ -1,12 +1,20 @@
-use eframe::egui;
+// src/app/ui/color_pickers.rs
+use eframe::egui::{self, Color32, Ui};
+
 use crate::app::state::AppState;
 
-pub fn draw(ui: &mut egui::Ui, state: &mut AppState) {
-    ui.label("Brush:");
-    ui.color_edit_button_srgba(&mut state.current_color);
+pub fn draw(ui: &mut Ui, state: &mut AppState) {
+    ui.horizontal(|ui| {
+        ui.label("Color:");
 
-    ui.separator();
+        let mut col = state.current_color;
 
-    ui.label("Canvas:");
-    ui.color_edit_button_srgba(&mut state.canvas_bg);
+        egui::color_picker::color_edit_button_srgba(
+            ui,
+            &mut col,
+            egui::color_picker::Alpha::BlendOrAdditive,
+        );
+
+        state.current_color = col;
+    });
 }

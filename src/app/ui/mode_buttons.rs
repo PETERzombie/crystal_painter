@@ -1,8 +1,9 @@
-use eframe::egui::{self, Color32};
+// app/ui/mode_buttons.rs
+use eframe::egui::{self, Ui, Color32};
 use crate::app::brushes::BrushKind;
-use crate::app::state::PaintState;
+use crate::app::state::AppState;
 
-pub fn draw(ui: &mut egui::Ui, state: &mut AppState) {
+pub fn draw(ui: &mut Ui, state: &mut AppState) {
     ui.horizontal(|ui| {
         let modes = [
             (BrushKind::Crystal, "Crystal"),

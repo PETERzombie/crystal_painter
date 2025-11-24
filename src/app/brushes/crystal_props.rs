@@ -1,3 +1,5 @@
+// app/brushes/crystal_props.rs
+
 #[derive(Debug, Clone)]
 pub struct CrystalProps {
     pub branch_angle: f32,

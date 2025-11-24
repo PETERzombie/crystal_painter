@@ -1,14 +1,15 @@
+// app/state.rs
 //! Central application state for the modular Crystal Painter.
 
 use eframe::egui::{self, Color32, Pos2};
 use crate::app::painter::CanvasPainter;
 use crate::app::brushes::{BrushKind, crystal, drip, blotter};
+use crate::app::brushes::blotter_props::BlotterProps;
 use crate::app::ui;
 
 use std::time::Instant;
 
-// Imported from blotter module
-use crate::app::brushes::blotter::{Blot, BlotShape};
+use crate::app::brushes::blotter::Blot;
 
 pub struct AppState {
     // UI
@@ -23,7 +24,10 @@ pub struct AppState {
     // brushes
     pub crystal: crystal::CrystalBrush,
     pub drip: drip::DripBrush,
-    pub blotter: blotter::BlotterBrush,
+
+    // new blotter engine + props
+    pub blotter: blotter::Blotter,
+    pub blotter_props: BlotterProps,
 
     // canvas stored elements
     pub strokes: Vec<crystal::StrokeData>,
@@ -42,11 +46,6 @@ pub struct AppState {
     // control panel
     pub should_destroy: bool,
     pub should_exit: bool,
-
-    // blotter UI settings
-    pub halo_offset_percent: f32,
-    pub deposit_rate_ms: f32,
-    pub blot_shape: BlotShape,
 }
 
 impl Default for AppState {
@@ -65,7 +64,9 @@ impl Default for AppState {
 
             crystal: crystal::CrystalBrush::new(),
             drip: drip::DripBrush::new(),
-            blotter: blotter::BlotterBrush::new(),
+
+            blotter: blotter::Blotter::new(),
+            blotter_props: BlotterProps::default(),
 
             strokes: Vec::new(),
             blots: Vec::new(),
@@ -80,31 +81,29 @@ impl Default for AppState {
 
             should_destroy: false,
             should_exit: false,
-
-            halo_offset_percent: 0.0,
-            deposit_rate_ms: 40.0,
-            blot_shape: BlotShape::Circle,
         }
     }
 }
 
 impl eframe::App for AppState {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 
+        // Handle destroy request
         if self.should_destroy {
             self.destroy_canvas();
             self.should_destroy = false;
         }
 
+        // Handle exit request
         if self.should_exit {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
 
-        // Draw UI
+        // --- UI ---
         ui::top_bar::show(self, ctx);
 
-        // Canvas panel
+        // --- Canvas Panel ---
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(self.canvas_bg))
             .show(ctx, |ui| {
@@ -113,34 +112,42 @@ impl eframe::App for AppState {
                     ui.allocate_exact_size(ui.available_size(), egui::Sense::drag());
 
                 let pointer_pos = response.interact_pointer_pos();
-                let down = response.dragged();
-                let released = response.drag_stopped();
+                let is_down = response.dragged();
+                let is_released = response.drag_stopped();
 
-                if down {
-                    if let Some(p) = pointer_pos {
+                // Start stroke for blotter
+                if let BrushKind::Blotter = self.active_brush {
+                    if response.drag_started() {
+                        if let Some(pos) = pointer_pos {
+                            self.blotter.begin_stroke(pos);
+                        }
+                    }
+                }
+
+                // ---------- DRAWING ----------
+                if is_down {
+                    if let Some(pos) = pointer_pos {
                         match self.active_brush {
                             BrushKind::Crystal | BrushKind::Drip => {
-                                if self.current_points.last() != Some(&p) {
-                                    self.current_points.push(p);
+                                if self.current_points.last() != Some(&pos) {
+                                    self.current_points.push(pos);
                                 }
                             }
 
                             BrushKind::Blotter => {
-                                self.blots.push(Blot {
-                                    pos: p,
-                                    radius: self.blotter.props.radius,
-                                    halo_radius: self.blotter.props.halo_radius,
-                                    shape: self.blot_shape,
-                                    color: self.current_color,
-                                    softness: self.blotter.props.softness,
-                                    opacity: self.blotter.props.opacity,
-                                });
+                                let new_blots = self.blotter.tick(
+                                    pos,
+                                    &self.blotter_props,
+                                    self.current_color,
+                                );
+                                self.blots.extend(new_blots);
                             }
                         }
                     }
                 }
 
-                if released {
+                // ---------- FINISH STROKE ----------
+                if is_released {
                     match self.active_brush {
                         BrushKind::Crystal => {
                             if self.current_points.len() >= 2 {
@@ -161,13 +168,20 @@ impl eframe::App for AppState {
                                 self.strokes.push(data);
                             }
                         }
-                        BrushKind::Drip => {}
-                        BrushKind::Blotter => {}
+
+                        BrushKind::Drip => {
+                            // Drip draws live; no commit needed
+                        }
+
+                        BrushKind::Blotter => {
+                            self.blotter.end_stroke();
+                        }
                     }
 
                     self.current_points.clear();
                 }
 
+                // ---------- PAINT ----------
                 let painter = ui.painter();
 
                 CanvasPainter::paint_background(&painter, rect, self.canvas_bg);
@@ -176,9 +190,17 @@ impl eframe::App for AppState {
                 CanvasPainter::paint_active_path(&painter, &self.current_points);
                 CanvasPainter::paint_overlay(&painter, rect, &self.strokes, &self.blots);
 
+                // ---------- AUTO GROW ----------
                 if !self.paused {
-                    self.crystal
-                        .growth_step(&mut self.strokes, self.growth_speed, self.contain_growth);
+                    let now = Instant::now();
+                    if now.duration_since(self.last_tick).as_millis() > 16 {
+                        self.crystal.growth_step(
+                            &mut self.strokes,
+                            self.growth_speed,
+                            self.contain_growth,
+                        );
+                        self.last_tick = now;
+                    }
                 }
             });
 

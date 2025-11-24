@@ -1,3 +1,5 @@
+// app/brushes/drip_props.rs
+
 #[derive(Debug, Clone)]
 pub struct DripProps {
     pub gravity: f32,

@@ -1,11 +1,10 @@
-use eframe::egui::{Ui, Slider};
+// app/ui/dropdown.rs
+use eframe::egui::{Ui, ComboBox};
 use crate::app::brushes::BrushKind;
 use crate::app::state::AppState;
-use crate::app::brushes::crystal_props::CrystalProps;
-use crate::app::brushes::drip_props::DripProps;
-use crate::app::brushes::blotter_props::BlotterProps;
 
-/// The always-visible dropdown controller.
+/// Small properties dropdown used for brush property selection and similar.
+/// This one provides a property menu for the current brush selection.
 pub fn properties_dropdown(ui: &mut Ui, state: &mut AppState) {
     ui.menu_button("Properties", |ui| {
         ui.heading(match state.active_brush {
@@ -17,29 +16,46 @@ pub fn properties_dropdown(ui: &mut Ui, state: &mut AppState) {
 
         match state.active_brush {
             BrushKind::Crystal => {
-                let props: &mut CrystalProps = &mut state.crystal.props;
-                ui.label("Crystal Brush Settings");
-                ui.add(Slider::new(&mut props.thickness, 0.5..=6.0).text("Thickness"));
-                ui.add(Slider::new(&mut props.branch_angle, 0.1..=1.2).text("Branch Angle"));
-                ui.add(Slider::new(&mut props.branch_decay, 0.4..=0.95).text("Branch Decay"));
-                ui.add(Slider::new(&mut props.min_segment, 2.0..=20.0).text("Minimum Segment"));
+                ui.label("Crystal brush (use top toolbar sliders in future).");
             }
-
             BrushKind::Drip => {
-                let props: &mut DripProps = &mut state.drip.props;
-                ui.label("Drip Brush Settings");
-                ui.add(Slider::new(&mut props.thickness, 0.5..=8.0).text("Thickness"));
-                ui.add(Slider::new(&mut props.gravity, 0.1..=4.0).text("Gravity"));
-                ui.add(Slider::new(&mut props.viscosity, 0.5..=1.0).text("Viscosity"));
+                ui.label("Drip brush (use top toolbar sliders in future).");
             }
-
             BrushKind::Blotter => {
-                let props: &mut BlotterProps = &mut state.blotter.props;
-                ui.label("Blotter Brush Settings");
-                ui.add(Slider::new(&mut props.radius, 5.0..=150.0).text("Radius"));
-                ui.add(Slider::new(&mut props.softness, 0.0..=1.0).text("Softness"));
-                ui.add(Slider::new(&mut props.opacity, 0.0..=1.0).text("Opacity"));  // ← NEW
+                ui.label("Blotter brush (use top toolbar sliders in future).");
+                ui.label(format!("Radius: {:.1}",   state.blotter_props.radius));
+                ui.label(format!("Softness: {:.2}", state.blotter_props.softness));
+                ui.label(format!("Opacity: {:.2}",  state.blotter_props.opacity));
             }
         }
+    });
+
+    // Example ComboBox showing brush kinds (useful if you want an explicit selector)
+    ui.horizontal(|ui| {
+        ui.label("Brush:");
+        let labels = ["Crystal", "Drip", "Blotter"];
+        let mut sel = match state.active_brush {
+            BrushKind::Crystal => 0usize,
+            BrushKind::Drip => 1usize,
+            BrushKind::Blotter => 2usize,
+        };
+
+        ComboBox::from_id_source("brush_kind_combobox")
+            .selected_text(labels[sel])
+            .show_ui(ui, |ui| {
+                for (i, lab) in labels.iter().enumerate() {
+                    if ui.selectable_label(sel == i, *lab).clicked() {
+                        sel = i;
+                    }
+                }
+            });
+
+        // apply selection (keeps AppState authoritative)
+        let new_kind = match sel {
+            0 => BrushKind::Crystal,
+            1 => BrushKind::Drip,
+            _ => BrushKind::Blotter,
+        };
+        state.active_brush = new_kind;
     });
 }

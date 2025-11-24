@@ -1,7 +1,9 @@
+// app/brushes/crystal.rs
+
 use eframe::egui::{Painter, Pos2, Stroke, Color32, Vec2};
 use crate::app::brushes::crystal_props::CrystalProps;
 
-/// Stroke and segment data used by the painter.
+/// A single crystal segment.
 #[derive(Clone)]
 pub struct Segment {
     pub start: Pos2,
@@ -12,6 +14,7 @@ pub struct Segment {
     pub growing: bool,
 }
 
+/// A stroke consisting of one or more connected crystal segments.
 #[derive(Clone)]
 pub struct StrokeData {
     pub segments: Vec<Segment>,
@@ -20,7 +23,7 @@ pub struct StrokeData {
 }
 
 impl StrokeData {
-    pub fn new(color: Color32, growing: bool) -> Self {
+    pub fn new(color: Color32, _growing: bool) -> Self {
         Self {
             segments: Vec::new(),
             color,
@@ -40,6 +43,7 @@ impl StrokeData {
     }
 }
 
+/// The main crystal brush engine.
 pub struct CrystalBrush {
     pub props: CrystalProps,
 }
@@ -51,16 +55,12 @@ impl CrystalBrush {
         }
     }
 
-    /// A simple growth step that extends each segment slightly.
-    /// (This is a small, safe implementation suitable for initial integration.)
-    pub fn growth_step(&mut self, strokes: &mut Vec<StrokeData>, growth_speed: f32, contain: bool) {
-        // Append a small extension to the end of each last segment in each stroke
+    /// Very simple linear growth: extend the endpoint of each segment along its direction.
+    pub fn growth_step(&mut self, strokes: &mut Vec<StrokeData>, speed: f32, _contain: bool) {
         for stroke in strokes.iter_mut() {
             if let Some(last) = stroke.segments.last_mut() {
-                // compute next end
-                let step = growth_speed * 0.5;
-                let next = last.end + last.dir * step;
-                last.end = next;
+                let step = speed * 0.5;
+                last.end = last.end + last.dir * step;
             }
         }
     }
@@ -68,25 +68,18 @@ impl CrystalBrush {
 
 impl crate::app::brushes::BrushEngine for CrystalBrush {
     fn stroke(&mut self, painter: &Painter, from: Pos2, to: Pos2, color: Color32) {
-        // simple immediate render using recursive branches for visual effect
-        let dir = to - from;
-        let dir_norm = if dir.length_sq() > 0.0 { dir.normalized() } else { dir };
-        let seg = StrokeData {
-            segments: vec![Segment {
-                start: from,
-                end: to,
-                dir: dir_norm,
-                born: std::time::Instant::now(),
-                generation: 0,
-                growing: true,
-            }],
-            color,
-            thickness: Some(self.props.thickness),
+        let dv = to - from;
+
+        let dir = if dv.length_sq() > 0.0001 {
+            dv.normalized()
+        } else {
+            Vec2::new(1.0, 0.0)
         };
 
-        // painter draw immediate primary segment
-        for s in &seg.segments {
-            painter.line_segment([s.start, s.end], Stroke::new(self.props.thickness, color));
-        }
+        // immediate one-segment stroke (preview style)
+        painter.line_segment(
+            [from, to],
+            Stroke::new(self.props.thickness, color),
+        );
     }
 }

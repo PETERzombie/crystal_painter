@@ -1,16 +1,12 @@
-use eframe::egui;
-use crate::app::state::PaintState;
-use crate::app::ui::{dropdown, color_pickers, swatches, mode_buttons};
+// app/ui/top_bar.rs
+use eframe::egui::{self, Ui};
+use crate::app::state::AppState;
+use crate::app::ui::{dropdown, color_pickers, swatches, mode_buttons, canvas_color_picker};
 
-/// Render the top toolbar. This is the public entry used by state.rs
-pub fn show(state: &mut PaintState, ctx: &egui::Context) {
+/// Render the top toolbar. Public entry used by state.rs
+pub fn show(state: &mut AppState, ctx: &egui::Context) {
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         ui.horizontal(|ui| {
-            // Mode buttons
-            mode_buttons::draw(ui, state);
-
-            ui.separator();
-
             // Properties dropdown
             dropdown::properties_dropdown(ui, state);
 
@@ -18,6 +14,8 @@ pub fn show(state: &mut PaintState, ctx: &egui::Context) {
 
             // Color pickers
             color_pickers::draw(ui, state);
+            canvas_color_picker::draw(ui, state);
+
 
             ui.separator();
 
@@ -28,10 +26,12 @@ pub fn show(state: &mut PaintState, ctx: &egui::Context) {
             if ui.button("Grow").clicked() {
                 state.growth_speed = 0.35;
                 state.auto_grow = true;
+                state.paused = false;
             }
             if ui.button("Decay").clicked() {
                 state.growth_speed = -0.08;
                 state.auto_grow = true;
+                state.paused = false;
             }
 
             ui.separator();
@@ -43,23 +43,25 @@ pub fn show(state: &mut PaintState, ctx: &egui::Context) {
 
             ui.separator();
 
-            // -------------------------------------------------------
-            // 🔥 Add Destroy + Leave buttons here
-            // -------------------------------------------------------
+            // Destroy + Leave
             if ui.button("Destroy").clicked() {
                 state.should_destroy = true;
             }
-
             if ui.button("Leave").clicked() {
                 state.should_exit = true;
             }
+
             ui.separator();
-            ui.label(format!("Blots: {}", self.blots.len()));
+
+            // Blot count display (safe access to AppState.blots)
+            ui.label(format!("Blots: {}", state.blots.len()));
+
             ui.separator();
-            // -------------------------------------------------------
-            
-            // Swatches (right aligned)
-            swatches::draw(ui, state);
+
+            // Swatches (right aligned area)
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                swatches::draw(ui, state);
+            });
         });
     });
 }
